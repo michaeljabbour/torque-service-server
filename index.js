@@ -5,6 +5,7 @@ import { existsSync } from 'fs';
 import helmet from 'helmet';
 import cors from 'cors';
 import crypto from 'node:crypto';
+import { parse as parseCookies } from 'cookie';
 import { scaffoldHTML } from './scaffold-ui.js';
 import { generateOpenAPISpec } from './openapi.js';
 
@@ -216,8 +217,14 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
     // B8: CSRF validation for mutations in production
     app.use((req, res, next) => {
       if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) && req.path.startsWith('/api/') && !req.path.includes('sign_in')) {
-        const csrfCookie = req.cookies?.__torque_csrf;
+        // Parse cookies from the Cookie header (cookie-parser not required as a dep)
+        const cookies = req.headers.cookie ? parseCookies(req.headers.cookie) : {};
+        const csrfCookie = cookies.__torque_csrf;
         const csrfHeader = req.headers['x-csrf-token'];
+        // Fix: cookie present but header absent → 403 (was silently passing before)
+        if (csrfCookie && !csrfHeader) {
+          return res.status(403).json({ error: 'CSRF token missing' });
+        }
         if (csrfCookie && csrfHeader && csrfCookie !== csrfHeader) {
           return res.status(403).json({ error: 'CSRF token mismatch' });
         }
