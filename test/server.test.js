@@ -361,6 +361,90 @@ describe('createServer', () => {
     });
   });
 
+  describe('dynamic route handler lookup', () => {
+    it('serves the original handler', async () => {
+      const registry = createMockRegistry({
+        'dynamic-bundle': {
+          manifest: {
+            api: { routes: [{ method: 'GET', path: '/api/dynamic-v1', handler: 'doWork' }] },
+          },
+          instance: {
+            routes: () => ({ doWork: async (ctx) => ({ status: 200, data: { version: 1 } }) }),
+          },
+        },
+      });
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/dynamic-v1');
+        assert.equal(res.status, 200);
+        assert.deepEqual(JSON.parse(res.body), { version: 1 });
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('picks up the swapped handler after instance replacement', async () => {
+      const registry = createMockRegistry({
+        'dynamic-bundle': {
+          manifest: {
+            api: { routes: [{ method: 'GET', path: '/api/dynamic-swap', handler: 'doWork' }] },
+          },
+          instance: {
+            routes: () => ({ doWork: async (ctx) => ({ status: 200, data: { version: 1 } }) }),
+          },
+        },
+      });
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true });
+      const { server, port } = await startServer(app);
+      try {
+        // Verify original handler is served
+        const res1 = await get(port, '/api/dynamic-swap');
+        assert.equal(res1.status, 200);
+        assert.deepEqual(JSON.parse(res1.body), { version: 1 });
+
+        // Swap the instance (simulates hot reload completing)
+        registry.bundles['dynamic-bundle'].instance = {
+          routes: () => ({ doWork: async (ctx) => ({ status: 200, data: { version: 2 } }) }),
+        };
+
+        // Dynamic lookup should pick up new handler
+        const res2 = await get(port, '/api/dynamic-swap');
+        assert.equal(res2.status, 200);
+        assert.deepEqual(JSON.parse(res2.body), { version: 2 });
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('returns 503 when bundle is mid-reload', async () => {
+      const registry = createMockRegistry({
+        'dynamic-bundle': {
+          manifest: {
+            api: { routes: [{ method: 'GET', path: '/api/dynamic-503', handler: 'doWork' }] },
+          },
+          instance: {
+            routes: () => ({ doWork: async (ctx) => ({ status: 200, data: { ok: true } }) }),
+          },
+        },
+      });
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true });
+      const { server, port } = await startServer(app);
+      try {
+        // Remove instance to simulate bundle mid-reload (instance temporarily unloaded)
+        registry.bundles['dynamic-bundle'].instance = undefined;
+
+        const res = await get(port, '/api/dynamic-503');
+        assert.equal(res.status, 503);
+      } finally {
+        await stopServer(server);
+      }
+    });
+  });
+
   describe('embeddings search endpoint', () => {
     it('GET /api/embeddings/search returns 404 when embeddingService not provided', async () => {
       const registry = createMockRegistry();

@@ -400,6 +400,8 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
         continue;
       }
 
+      // Validate handler exists at boot time (above), but look it up dynamically at request time
+
       const middlewares = auth ? [requireAuth] : [];
 
       // Feature 18: Auto-validate request body from manifest
@@ -434,6 +436,17 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
 
         const start = Date.now();
         try {
+          // Dynamic lookup: read current instance at request time to support hot reload
+          const currentInstance = registry.bundleInstance(bundleName);
+          if (!currentInstance) {
+            return res.status(503).json({ error: 'Service temporarily unavailable (bundle reloading)' });
+          }
+          const currentRoutes = currentInstance.routes ? currentInstance.routes() : {};
+          const currentHandlerFn = currentRoutes[handlerName];
+          if (!currentHandlerFn) {
+            return res.status(503).json({ error: 'Service temporarily unavailable (handler unavailable after reload)' });
+          }
+
           // Hook: before route — awaited so async auth hooks (e.g. AuthorizationService) actually block
           if (hookBus) {
             await hookBus.emit('route:before', {
@@ -445,7 +458,7 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
             });
           }
 
-          const result = await handlerFn(ctx);
+          const result = await currentHandlerFn(ctx);
           const status = result?.status || 200;
           const data = result?.data ?? result; // Support { status, data } shape or raw response
 
