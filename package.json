@@ -4,6 +4,7 @@
   "license": "MIT",
   "type": "module",
   "main": "index.js",
+  "types": "index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/torque-framework/torque-service-server.git"
