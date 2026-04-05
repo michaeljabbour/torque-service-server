@@ -518,6 +518,7 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
             });
           }
         } catch (err) {
+          console.error(`[server] AgentRouter error in ${bundleName}.${intentKey}: ${err.message}`);
           return res.status(500).json({
             status: 'failed',
             error: err.message,
