@@ -1,0 +1,24 @@
+{
+  "name": "@torquedev/server",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/torque-framework/torque-service-server.git"
+  },
+  "peerDependencies": {
+    "express": ">=4.21.0"
+  },
+  "devDependencies": {
+    "express": "^4.21.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "helmet": "^8.1.0"
+  }
+}
