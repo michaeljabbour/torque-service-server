@@ -1,9 +1,11 @@
 import express from 'express';
 import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import helmet from 'helmet';
 import cors from 'cors';
 import { scaffoldHTML } from './scaffold-ui.js';
+import { generateOpenAPISpec } from './openapi.js';
 
 /**
  * Feature 18: Manifest-driven request validation.
@@ -242,6 +244,53 @@ export function createServer(registry, eventBus, { frontendDir, hookBus, authRes
       boot_state: { bundles_active: registry.activeBundles(), timestamp: new Date().toISOString() },
     });
   });
+
+  // --- OpenAPI spec + Swagger UI ---
+
+  const openApiIntrospect = { bundles: {} };
+  for (const name of registry.activeBundles()) {
+    const m = registry.bundleManifest(name);
+    openApiIntrospect.bundles[name] = {
+      version: m.version,
+      description: m.description,
+      api: m.api,
+    };
+  }
+  const openApiSpec = generateOpenAPISpec(openApiIntrospect);
+
+  app.get('/openapi.json', (req, res) => {
+    res.json(openApiSpec);
+  });
+
+  try {
+    const swaggerUiDistUrl = import.meta.resolve('swagger-ui-dist');
+    const swaggerUiDistDir = fileURLToPath(new URL('.', swaggerUiDistUrl));
+
+    // Redirect /api/docs -> /api/docs/index.html
+    app.get('/api/docs', (req, res) => {
+      res.redirect('/api/docs/index.html');
+    });
+
+    // Override swagger-initializer.js to point at /openapi.json
+    app.get('/api/docs/swagger-initializer.js', (req, res) => {
+      res.type('application/javascript');
+      res.send(`window.onload = function() {
+  window.ui = SwaggerUIBundle({
+    url: "/openapi.json",
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: "StandaloneLayout"
+  });
+};`);
+    });
+
+    // Serve static Swagger UI files
+    app.use('/api/docs', express.static(swaggerUiDistDir));
+
+    if (!silent) console.log('[server] Serving Swagger UI at /api/docs');
+  } catch {
+    if (!silent) console.log('[server] swagger-ui-dist not available, skipping /api/docs');
+  }
 
   // --- Auto-register bundle routes from manifests ---
 

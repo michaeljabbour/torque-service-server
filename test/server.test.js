@@ -88,6 +88,15 @@ describe('createServer', () => {
       assert.ok('bundles' in json);
       assert.ok('boot_state' in json);
     });
+
+    it('GET /openapi.json returns valid OpenAPI spec', async () => {
+      const res = await get(port, '/openapi.json');
+      assert.equal(res.status, 200);
+      const json = JSON.parse(res.body);
+      assert.equal(json.openapi, '3.1.0');
+      assert.ok(json.info, 'spec should have info');
+      assert.ok(json.paths !== undefined, 'spec should have paths');
+    });
   });
 
   describe('auth resolver', () => {
