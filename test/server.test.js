@@ -95,7 +95,7 @@ describe('createServer', () => {
       const json = JSON.parse(res.body);
       assert.equal(json.openapi, '3.1.0');
       assert.ok(json.info, 'spec should have info');
-      assert.ok(json.paths !== undefined, 'spec should have paths');
+      assert.ok(json.paths, 'spec should have paths');
     });
   });
 

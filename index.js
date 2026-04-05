@@ -247,7 +247,7 @@ export function createServer(registry, eventBus, { frontendDir, hookBus, authRes
 
   // --- OpenAPI spec + Swagger UI ---
 
-  const openApiIntrospect = { bundles: {} };
+  const openApiIntrospect = { app: registry.mountPlan?.app || {}, bundles: {} };
   for (const name of registry.activeBundles()) {
     const m = registry.bundleManifest(name);
     openApiIntrospect.bundles[name] = {
