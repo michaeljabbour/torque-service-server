@@ -101,7 +101,7 @@ function validateBody(data, rules) {
  * @param {function} [opts.authResolver] - (req, registry) => user|null. Injectable auth policy.
  *   Default: validates Bearer JWT via the 'identity' bundle's validateToken interface.
  */
-export async function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false, middleware = {}, agentRouter } = {}) {
+export async function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false, middleware = {}, agentRouter, embeddingService } = {}) {
   const app = express();
 
   // Security headers
@@ -300,6 +300,30 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
       boot_state: { bundles_active: registry.activeBundles(), timestamp: new Date().toISOString() },
     });
   });
+
+  // --- Embeddings search endpoint (optional, only if embeddingService provided) ---
+
+  if (embeddingService) {
+    app.get('/api/embeddings/search', async (req, res) => {
+      const { q, bundle, limit, threshold } = req.query;
+      if (!q) {
+        return res.status(400).json({ error: 'Missing required query param: q' });
+      }
+      try {
+        const results = await embeddingService.search(
+          bundle ?? null,
+          q,
+          {
+            limit: limit !== undefined ? Number(limit) : 10,
+            threshold: threshold !== undefined ? Number(threshold) : 0,
+          }
+        );
+        return res.json({ results, query: q });
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    });
+  }
 
   // --- OpenAPI spec + Swagger UI ---
 

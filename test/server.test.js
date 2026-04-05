@@ -360,4 +360,96 @@ describe('createServer', () => {
       }
     });
   });
+
+  describe('embeddings search endpoint', () => {
+    it('GET /api/embeddings/search returns 404 when embeddingService not provided', async () => {
+      const registry = createMockRegistry();
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/embeddings/search?q=test');
+        assert.equal(res.status, 404, 'endpoint should not be registered without embeddingService');
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('GET /api/embeddings/search returns 400 when q is missing', async () => {
+      const mockEmbeddingService = { search: async () => [] };
+      const registry = createMockRegistry();
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true, embeddingService: mockEmbeddingService });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/embeddings/search');
+        assert.equal(res.status, 400);
+        const json = JSON.parse(res.body);
+        assert.ok('error' in json, 'Response should have error field');
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('GET /api/embeddings/search returns results with query when q is provided', async () => {
+      const mockEmbeddingService = {
+        search: async (bundle, query, opts) => [{ id: '1', text: 'result' }],
+      };
+      const registry = createMockRegistry();
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true, embeddingService: mockEmbeddingService });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/embeddings/search?q=hello');
+        assert.equal(res.status, 200);
+        const json = JSON.parse(res.body);
+        assert.ok('results' in json, 'Response should have results field');
+        assert.ok('query' in json, 'Response should have query field');
+        assert.equal(json.query, 'hello');
+        assert.ok(Array.isArray(json.results), 'results should be an array');
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('GET /api/embeddings/search passes bundle, limit, threshold params to search', async () => {
+      let capturedArgs = null;
+      const mockEmbeddingService = {
+        search: async (bundle, query, opts) => {
+          capturedArgs = { bundle, query, opts };
+          return [];
+        },
+      };
+      const registry = createMockRegistry();
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true, embeddingService: mockEmbeddingService });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/embeddings/search?q=test&bundle=tasks&limit=5&threshold=0.8');
+        assert.equal(res.status, 200);
+        assert.equal(capturedArgs.bundle, 'tasks');
+        assert.equal(capturedArgs.query, 'test');
+        assert.equal(capturedArgs.opts.limit, 5);
+        assert.equal(capturedArgs.opts.threshold, 0.8);
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('GET /api/embeddings/search returns 500 when search throws', async () => {
+      const mockEmbeddingService = {
+        search: async () => { throw new Error('search failed'); },
+      };
+      const registry = createMockRegistry();
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { silent: true, embeddingService: mockEmbeddingService });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await get(port, '/api/embeddings/search?q=test');
+        assert.equal(res.status, 500);
+      } finally {
+        await stopServer(server);
+      }
+    });
+  });
 });
