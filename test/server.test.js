@@ -335,5 +335,29 @@ describe('createServer', () => {
         await stopServer(server);
       }
     });
+
+    it('returns 500 with structured JSON when agentRouter.execute() throws', async () => {
+      const registry = createIntentRegistry();
+      const eventBus = createMockEventBus();
+      const mockAgentRouter = {
+        execute: async () => { throw new Error('SDK panic'); },
+      };
+      const app = await createServer(registry, eventBus, {
+        authResolver: () => ({ id: 'user1' }),
+        agentRouter: mockAgentRouter,
+        silent: true,
+      });
+      const { server, port } = await startServer(app);
+      try {
+        const res = await post(port, '/api/intents/test-bundle/summarize', {});
+        assert.equal(res.status, 500);
+        const json = JSON.parse(res.body);
+        assert.equal(json.status, 'failed');
+        assert.equal(json.error, 'SDK panic');
+        assert.equal(json.intent, 'summarize');
+      } finally {
+        await stopServer(server);
+      }
+    });
   });
 });

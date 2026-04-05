@@ -501,18 +501,26 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
           });
         }
 
-        const result = await agentRouter.execute(bundleName, intentKey, req.body);
+        try {
+          const result = await agentRouter.execute(bundleName, intentKey, payload);
 
-        if (result.status === 'success') {
-          return res.status(200).json({
-            status: 'success',
-            output: result.output,
-            trace: result.trace,
-          });
-        } else {
+          if (result.status === 'success') {
+            return res.status(200).json({
+              status: 'success',
+              output: result.output,
+              trace: result.trace,
+            });
+          } else {
+            return res.status(500).json({
+              status: 'failed',
+              error: result.error instanceof Error ? result.error.message : result.error,
+              intent: intentKey,
+            });
+          }
+        } catch (err) {
           return res.status(500).json({
             status: 'failed',
-            error: result.error instanceof Error ? result.error.message : result.error,
+            error: err.message,
             intent: intentKey,
           });
         }
