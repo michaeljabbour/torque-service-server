@@ -45,7 +45,7 @@ describe('Server SPA frontend serving', () => {
 
     const registry = makeRegistry();
     const eventBus = makeEventBus();
-    const app = createServer(registry, eventBus, { frontendDir });
+    const app = await createServer(registry, eventBus, { frontendDir });
 
     ({ server, port } = await startServer(app));
   });

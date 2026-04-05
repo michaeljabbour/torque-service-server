@@ -55,7 +55,7 @@ describe('createServer', () => {
     before(async () => {
       const registry = createMockRegistry();
       const eventBus = createMockEventBus();
-      const app = createServer(registry, eventBus);
+      const app = await createServer(registry, eventBus);
       ({ server, port } = await startServer(app));
     });
 
@@ -103,7 +103,7 @@ describe('createServer', () => {
     it('default authResolver sets currentUser to null (protected routes return 401)', async () => {
       const registry = createMockRegistry({ 'test-bundle': createProtectedBundle() });
       const eventBus = createMockEventBus();
-      const app = createServer(registry, eventBus);
+      const app = await createServer(registry, eventBus);
       const { server, port } = await startServer(app);
       try {
         const res = await get(port, '/api/protected');
@@ -116,7 +116,7 @@ describe('createServer', () => {
     it('custom authResolver populates req.currentUser (protected routes return 200)', async () => {
       const registry = createMockRegistry({ 'test-bundle': createProtectedBundle() });
       const eventBus = createMockEventBus();
-      const app = createServer(registry, eventBus, {
+      const app = await createServer(registry, eventBus, {
         authResolver: (req, reg) => ({ id: 'u1', name: 'Test User' }),
       });
       const { server, port } = await startServer(app);

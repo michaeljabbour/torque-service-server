@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import helmet from 'helmet';
 import cors from 'cors';
+import crypto from 'node:crypto';
 import { scaffoldHTML } from './scaffold-ui.js';
 import { generateOpenAPISpec } from './openapi.js';
 
@@ -100,7 +101,7 @@ function validateBody(data, rules) {
  * @param {function} [opts.authResolver] - (req, registry) => user|null. Injectable auth policy.
  *   Default: validates Bearer JWT via the 'identity' bundle's validateToken interface.
  */
-export function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false } = {}) {
+export async function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false, middleware = {} } = {}) {
   const app = express();
 
   // Security headers
@@ -115,6 +116,61 @@ export function createServer(registry, eventBus, { frontendDir, hookBus, authRes
   }));
 
   app.use(express.json());
+
+  // --- Middleware pipeline (configurable from mount plans) ---
+
+  // request_id: ON by default (set middleware.request_id = false to disable)
+  if (middleware.request_id !== false) {
+    app.use((req, res, next) => {
+      const requestId = req.headers['x-request-id'] || crypto.randomUUID();
+      req.requestId = requestId;
+      res.setHeader('X-Request-Id', requestId);
+      next();
+    });
+  }
+
+  // request_logging: structured JSON logging (opt-in)
+  if (middleware.request_logging) {
+    app.use((req, res, next) => {
+      const start = Date.now();
+      const originalEnd = res.end.bind(res);
+      res.end = function (...args) {
+        const duration_ms = Date.now() - start;
+        console.log(JSON.stringify({
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          duration_ms,
+          request_id: req.requestId,
+        }));
+        return originalEnd(...args);
+      };
+      next();
+    });
+  }
+
+  // compression: gzip/deflate compression (opt-in, requires 'compression' package)
+  if (middleware.compression) {
+    try {
+      const { default: compression } = await import('compression');
+      app.use(compression());
+    } catch {
+      if (!silent) console.log('[server] compression middleware requested but "compression" package is not installed');
+    }
+  }
+
+  // rate_limit: request rate limiting (opt-in, requires 'express-rate-limit' package)
+  if (middleware.rate_limit) {
+    try {
+      const { default: rateLimit } = await import('express-rate-limit');
+      app.use(rateLimit({
+        windowMs: middleware.rate_limit.window_ms || 60 * 1000,
+        max: middleware.rate_limit.max_requests || 100,
+      }));
+    } catch {
+      if (!silent) console.log('[server] rate_limit middleware requested but "express-rate-limit" package is not installed');
+    }
+  }
 
   // Default auth resolver: no authentication. Apps with auth should provide
   // a custom authResolver (e.g., one that calls identity.validateToken).
@@ -149,7 +205,7 @@ export function createServer(registry, eventBus, { frontendDir, hookBus, authRes
             path: '/',
           });
           // Also set CSRF token as readable cookie
-          const csrf = require('crypto').randomBytes(16).toString('hex');
+          const csrf = crypto.randomBytes(16).toString('hex');
           res.cookie('__torque_csrf', csrf, { sameSite: 'strict', path: '/' });
         }
         return _json(data);
