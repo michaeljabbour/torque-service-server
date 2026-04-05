@@ -430,6 +430,19 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
             });
           }
 
+          if (hookBus) {
+            await hookBus.emit('route:beforeResponse', {
+              bundle: bundleName,
+              handler: handlerName,
+              method: expressMethod,
+              path: req.path,
+              status,
+              data,
+              requestId: req.requestId || null,
+              durationMs: Date.now() - start,
+            });
+          }
+
           res.status(status).json(data);
         } catch (e) {
           // Auth hooks throw AuthorizationError — return 403 without logging as server error

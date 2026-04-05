@@ -99,6 +99,75 @@ describe('createServer', () => {
     });
   });
 
+  describe('route:beforeResponse hook', () => {
+    it('emits route:beforeResponse with correct payload before sending response', async () => {
+      const emitted = [];
+      const mockHookBus = {
+        emit: async (event, payload) => { emitted.push({ event, payload }); },
+        emitSync: (event, payload) => { emitted.push({ event, payload }); },
+      };
+
+      const registry = createMockRegistry({
+        'hook-test-bundle': {
+          manifest: {
+            api: { routes: [{ method: 'GET', path: '/api/hook-test', handler: 'hookTest' }] },
+          },
+          instance: {
+            routes: () => ({ hookTest: async (ctx) => ({ status: 200, data: { hello: 'world' } }) }),
+          },
+        },
+      });
+
+      const eventBus = createMockEventBus();
+      const app = await createServer(registry, eventBus, { hookBus: mockHookBus, silent: true });
+      const { server, port } = await startServer(app);
+
+      try {
+        const res = await get(port, '/api/hook-test');
+        assert.equal(res.status, 200);
+
+        const beforeResponse = emitted.find(e => e.event === 'route:beforeResponse');
+        assert.ok(beforeResponse, 'route:beforeResponse hook should be emitted');
+        assert.equal(beforeResponse.payload.bundle, 'hook-test-bundle');
+        assert.equal(beforeResponse.payload.handler, 'hookTest');
+        assert.equal(beforeResponse.payload.method, 'get');
+        assert.equal(beforeResponse.payload.path, '/api/hook-test');
+        assert.equal(beforeResponse.payload.status, 200);
+        assert.deepEqual(beforeResponse.payload.data, { hello: 'world' });
+        assert.ok(typeof beforeResponse.payload.durationMs === 'number', 'durationMs should be a number');
+        assert.ok('requestId' in beforeResponse.payload, 'requestId should be present in payload');
+      } finally {
+        await stopServer(server);
+      }
+    });
+
+    it('does not throw when hookBus is not provided (hook-free route still responds)', async () => {
+      const registry = createMockRegistry({
+        'no-hook-bundle': {
+          manifest: {
+            api: { routes: [{ method: 'GET', path: '/api/no-hook', handler: 'noHook' }] },
+          },
+          instance: {
+            routes: () => ({ noHook: async (ctx) => ({ status: 200, data: { ok: true } }) }),
+          },
+        },
+      });
+
+      const eventBus = createMockEventBus();
+      // No hookBus passed
+      const app = await createServer(registry, eventBus, { silent: true });
+      const { server, port } = await startServer(app);
+
+      try {
+        const res = await get(port, '/api/no-hook');
+        assert.equal(res.status, 200, 'Route should still work without hookBus');
+        assert.deepEqual(JSON.parse(res.body), { ok: true });
+      } finally {
+        await stopServer(server);
+      }
+    });
+  });
+
   describe('auth resolver', () => {
     it('default authResolver sets currentUser to null (protected routes return 401)', async () => {
       const registry = createMockRegistry({ 'test-bundle': createProtectedBundle() });
