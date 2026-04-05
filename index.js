@@ -101,7 +101,7 @@ function validateBody(data, rules) {
  * @param {function} [opts.authResolver] - (req, registry) => user|null. Injectable auth policy.
  *   Default: validates Bearer JWT via the 'identity' bundle's validateToken interface.
  */
-export async function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false, middleware = {} } = {}) {
+export async function createServer(registry, eventBus, { frontendDir, hookBus, authResolver, silent = false, middleware = {}, agentRouter } = {}) {
   const app = express();
 
   // Security headers
@@ -483,7 +483,6 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
       app.post(intentPath, requireAuth, async (req, res) => {
         const payload = req.body;
 
-        // Emulate the AgentRouter payload processing
         if (hookBus) {
           hookBus.emitSync('idd:intent_invoked', {
             bundle: bundleName,
@@ -494,13 +493,29 @@ export async function createServer(registry, eventBus, { frontendDir, hookBus, a
           });
         }
 
-        res.status(200).json({
-          status: 'success',
-          intent: intentKey,
-          message: `Intent '${intentInstance.name}' executed successfully.`,
-          successCriteria: intentInstance.successCriteria,
-          behavior: intentInstance.behavior?.persona || 'Default persona',
-        });
+        if (!agentRouter) {
+          return res.status(501).json({
+            status: 'not_implemented',
+            intent: intentKey,
+            message: 'Agent runtime is not available. Install @anthropic-ai/claude-agent-sdk to enable intent execution.',
+          });
+        }
+
+        const result = await agentRouter.execute(bundleName, intentKey, req.body);
+
+        if (result.status === 'success') {
+          return res.status(200).json({
+            status: 'success',
+            output: result.output,
+            trace: result.trace,
+          });
+        } else {
+          return res.status(500).json({
+            status: 'failed',
+            error: result.error instanceof Error ? result.error.message : result.error,
+            intent: intentKey,
+          });
+        }
       });
       intentsRegisteredCount++;
     }

@@ -11,6 +11,31 @@ export function get(port, path) {
   });
 }
 
+// Helper: make HTTP POST request to a local server
+export function post(port, path, body = {}) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const options = {
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    };
+    const req = http.request(options, (res) => {
+      let responseData = '';
+      res.on('data', (chunk) => (responseData += chunk));
+      res.on('end', () => resolve({ status: res.statusCode, body: responseData }));
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
 // Helper: start a real HTTP server on a random port
 export function startServer(app) {
   const server = http.createServer(app);
